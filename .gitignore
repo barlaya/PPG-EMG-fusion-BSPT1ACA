@@ -1,0 +1,21 @@
+# Virtual environments
+.venv/
+venv/
+
+# Signal sources
+.data/
+.src/
+
+# PyCharm project settings
+.idea/
+
+# Byte-compiled / cache
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+*.pyc
+*.pyo
+*.pyd
+
+# Logs
+*.log
