@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 
+
 class Subject:
     def __init__(self, name: str, df: pd.DataFrame, fs: float):
         """
@@ -38,6 +39,7 @@ class Subject:
     def add_chunk(self, chunk_df: pd.DataFrame):
         self.chunks.append(chunk_df)
 
+
 class ManagerClass:
     def __init__(self):
         """
@@ -55,6 +57,5 @@ class ManagerClass:
         return list(self.patient_objects.keys())
 
     def apply(self, func):
-
         for patient in self.patient_objects.values():
             func(patient)
