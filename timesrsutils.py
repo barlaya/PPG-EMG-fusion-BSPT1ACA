@@ -1,48 +1,71 @@
 import numpy as np
 import pandas as pd
-from scipy.signal import butter, filtfilt, welch, resample
+import neurokit2 as nk
+from scipy.signal import butter, filtfilt, hilbert, welch, resample
 import pywt
 from numpy.lib.stride_tricks import sliding_window_view
 
 class TimeSrsTools:
     @staticmethod
-    def check_timeaxis(df: pd.DataFrame, time_col: str=None) -> float:
-        """
-        return sampling frequency estimated from the time axis
-        """
-        if time_col is None:
-            t = df[time_col].values
-        else:
-            t = df.index.values
-
-        dt = np.diff(t).astype(float)
-        fs_est = 1.0 / np.median(dt)
-        return fs_est
-
-    @staticmethod
-    def bandpass(x, fs, low, high, order=4):
+    def emg_bandpass_rectify(x, fs, low=20, high=250, order=4):
         nyq = 0.5 * fs
         b, a = butter(order, [low/nyq, high/nyq], btype='bandpass')
-        return filtfilt(b, a, x)
-
-    @staticmethod
-    def lowpass(x, fs, width, order=4):
-        nyq = 0.5 * fs
-        b, a = butter(order, [width/nyq], btype='lowpass')
-        return filtfilt(b, a, x)
-
-    @staticmethod
-    def emg_envelope(x, fs, low=20, high=450, lp_cutoff=5):
-        """
-        1) bandpass EMG
-        2) rectify
-        3) lowpass envelope
-        returns envelope, x filtered, x rectified
-        """
-        x_filt = TimeSrsTools.bandpass(x, fs, low, high)
+        x_filt = filtfilt(b, a, x)
         x_rect = np.abs(x_filt)
-        env = TimeSrsTools.lowpass(x_rect, fs, lp_cutoff)
-        return env, x_filt, x_rect
+        return x_filt, x_rect
+
+    @staticmethod
+    def emg_hilbert_envelope(x_rect):
+        calc = hilbert(x_rect)
+        envelope = np.abs(calc)
+        return envelope
+
+    @staticmethod
+    def emg_preprocess_hilbert(subject, col="EMG", low=20, high=250):
+        df = subject.df
+        fs = subject.fs
+
+        # neurokit numeric-clean version
+        x = nk.signal_sanitize(df[col].values.astype(float))
+        x_filt, x_rect = TimeSrsTools.emg_bandpass_rectify(x, fs, low=low, high=high)
+        x_env = TimeSrsTools.emg_hilbert_envelope(x_rect)
+        subject.set_column("EMG_filt", x_filt)
+        subject.set_column("EMG_rect", x_rect)
+        subject.set_column("EMG_env", x_env)
+        return subject.df
+
+
+    '''
+        @staticmethod
+        def emg_envelope(x, fs, low=20, high=450, lp_cutoff=5):
+            """
+            1) bandpass EMG
+            2) rectify
+            3) lowpass envelope
+            returns envelope, x filtered, x rectified
+            """
+            x_filt = TimeSrsTools.bandpass(x, fs, low, high)
+            x_rect = np.abs(x_filt)
+            env = TimeSrsTools.lowpass(x_rect, fs, lp_cutoff)
+            return env, x_filt, x_rect
+    '''
+    @staticmethod
+    def window_dataframe(df: pd.DataFrame, window_size: int,
+                         overlap: int = 0) -> list[pd.DataFrame]:
+        if window_size <= 0:
+            raise ValueError("window_size must be > 0")
+        if overlap < 0:
+            raise ValueError("overlap must be >= 0")
+        if overlap >= window_size:
+            raise ValueError("overlap must be smaller than window_size")
+        step = window_size - overlap
+        windows: list[pd.DataFrame] = []
+
+        for start in range(0, len(df) - window_size + 1, step):
+            end = start + window_size
+            window = df.iloc[start:end].copy()
+            windows.append(window)
+        return windows
 
     @staticmethod
     def welchsm(x, fs, nperseg=None):

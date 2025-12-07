@@ -4,7 +4,7 @@ import numpy as np
 class Subject:
     def __init__(self, name: str, df: pd.DataFrame, fs: float):
         """
-        df:'time' column, contains 'EMG' of subject
+        df:'time' column, 'Integrated EMG' (mV) and contains 'EMG'  (mV) of subject
         fs: sampling frequency (Hz)
         """
         self.name = name
@@ -15,6 +15,43 @@ class Subject:
         self.features: dict = {}
         self.chunks: list[pd.DataFrame] = []
         self.sqi: dict = {}
+
+    @classmethod
+
+    def from_csv(cls, name: str, path: str, fs: float, target_len: int | None=None):
+        df = pd.read_csv(path, delimiter=";", encoding="utf-8")
+        df = df.replace(",", ".", regex=True)
+
+        for col in df.columns:
+            if col.lower() != "time":
+                df[col] = pd.to_numeric(df[col], errors="coerce")
+        if target_len is not None:
+            current_len=len(df)
+            if current_len < target_len:
+                pad_size = target_len - current_len
+                pad_dict = {}
+                for col in df.columns:
+                    if col.lower() != "time":
+                        continue
+                    pad_dict[col] = np.zeros(pad_size)
+                pad_df=pd.DataFrame(pad_dict)
+                df = pd.concat([df, pad_df], ignore_index=True)
+            elif current_len > target_len:
+                df = df.iloc[:target_len].reset_index(drop=True)
+
+        if "time" not in df.columns:
+            n = len(df)
+            df["time"] = np.arange(n)/fs
+        cols = list(df.columns)
+
+        if "time" in cols:
+            cols.insert(0, cols.pop(cols.index("time")))
+            df = df[cols]
+
+        return cls(name=name, df=df, fs=fs)
+
+    #def load_csv(self):
+    #    return self.df
 
     def get_column(self, column: str) -> pd.Series:
         return self.df[column]
@@ -37,24 +74,3 @@ class Subject:
 
     def add_chunk(self, chunk_df: pd.DataFrame):
         self.chunks.append(chunk_df)
-
-class ManagerClass:
-    def __init__(self):
-        """
-        dict of all Subjects, to perform same methods on all
-        """
-        self.patient_objects: dict[str, Subject] = {}
-
-    def add_subject(self, patient: Subject):
-        self.patient_objects[patient.name] = patient
-
-    def get_subject(self, name: str) -> Subject | None:
-        return self.patient_objects.get(name)
-
-    def all_names(self):
-        return list(self.patient_objects.keys())
-
-    def apply(self, func):
-
-        for patient in self.patient_objects.values():
-            func(patient)
