@@ -7,8 +7,19 @@ from numpy.lib.stride_tricks import sliding_window_view
 
 class TimeSrsTools:
     @staticmethod
-    def emg_bandpass_rectify(x, fs, low=20, high=250, order=4):
+    def emg_bandpass_rectify(x, fs, low=20, high=220, order=4):
         nyq = 0.5 * fs
+        low_norm = low / nyq
+        high_norm = high / nyq
+        if high_norm >= 1.0:
+            high_norm = 0.99
+        if low_norm <= 0.0:
+            low_norm = 1e-6
+        if low_norm >= high_norm:
+            raise ValueError(
+                f"Invalid band: low={low}Hz, high={high}Hz for fs={fs}Hz "
+                f"(normalized low={low_norm}, high={high_norm})"
+            )
         b, a = butter(order, [low/nyq, high/nyq], btype='bandpass')
         x_filt = filtfilt(b, a, x)
         x_rect = np.abs(x_filt)
@@ -21,10 +32,9 @@ class TimeSrsTools:
         return envelope
 
     @staticmethod
-    def emg_preprocess_hilbert(subject, col="EMG", low=20, high=250):
+    def emg_preprocess_hilbert(subject, col="EMG", low=20, high=220):
         df = subject.df
         fs = subject.fs
-
         # neurokit numeric-clean version
         x = nk.signal_sanitize(df[col].values.astype(float))
         x_filt, x_rect = TimeSrsTools.emg_bandpass_rectify(x, fs, low=low, high=high)
@@ -34,21 +44,16 @@ class TimeSrsTools:
         subject.set_column("EMG_env", x_env)
         return subject.df
 
+    @staticmethod
+    def lowpass(x, fs, cutoff, order=4):
+        nyq = 0.5 * fs
+        if not (0 < cutoff < nyq):
+            raise ValueError(f"Invalid lowpass cutoff={cutoff} Hz for fs={fs} Hz "
+                f"(must satisfy 0 < cutoff < fs/2={nyq}).")
+        b, a = butter(order, cutoff, btype="lowpass", fs=fs)
+        y = filtfilt(b, a, x)
+        return y
 
-    '''
-        @staticmethod
-        def emg_envelope(x, fs, low=20, high=450, lp_cutoff=5):
-            """
-            1) bandpass EMG
-            2) rectify
-            3) lowpass envelope
-            returns envelope, x filtered, x rectified
-            """
-            x_filt = TimeSrsTools.bandpass(x, fs, low, high)
-            x_rect = np.abs(x_filt)
-            env = TimeSrsTools.lowpass(x_rect, fs, lp_cutoff)
-            return env, x_filt, x_rect
-    '''
     @staticmethod
     def window_dataframe(df: pd.DataFrame, window_size: int,
                          overlap: int = 0) -> list[pd.DataFrame]:
