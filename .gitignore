@@ -5,7 +5,7 @@ venv/
 # Signal sources
 .data/
 .src/
-
+.local/
 # PyCharm project settings
 .idea/
 
