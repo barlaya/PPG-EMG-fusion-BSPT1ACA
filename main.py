@@ -1,6 +1,7 @@
 import os
 import numpy as np
 import pandas as pd
+from scipy.signal import resample_poly
 import matplotlib.pyplot as plt
 
 # EMG imports:
@@ -25,11 +26,12 @@ PPG_BASE_DIR = os.path.join("temp_dir", "PPG_AllSubjects")
 os.makedirs(PPG_BASE_DIR, exist_ok=True)
 
 # EMG Configuration
-FS_EMG = 500.
+FS_EMG = 500
 FS_PPG_TARGET = float(RECORDER_PPG_FS)
-TARGET_DURATION_S = 120
-EMG_LEN = 60000
+TARGET_DURATION_S = 140
+EMG_LEN = 70000
 PPG_LEN = int(FS_PPG_TARGET * TARGET_DURATION_S)
+
 
 
 # PPG pipeline calls:
@@ -80,17 +82,92 @@ def process_ppg_subject(index, signal):
 
     print(f"Finished PPG Subject {index}")
 
-
 if __name__ == '__main__':
 
     # PART 1: EMG Processing
     print("\n=== STARTING EMG PROCESSING ===")
 
     ids = ['P2', 'P3', 'P4', 'P5', 'P6', 'P7', 'P8', 'P9', 'P10']
+    subject_events = {
+        "P2": [
+            {"phase": "rest", "start_s": 0.0, "end_s": 4.2640},
+            {"phase": "lift", "start_s": 4.2640, "end_s": 17.9740},
+            {"phase": "rest", "start_s": 17.9740, "end_s": 28.3400},
+            {"phase": "lift", "start_s": 28.3400, "end_s": 42.1960},
+            {"phase": "rest", "start_s": 42.1960, "end_s": 54.3080},
+            {"phase": "lift", "start_s": 54.3080, "end_s": 68.5500},
+        ],
+        "P3": [
+            {"phase": "rest", "start_s": 0.0, "end_s": 4.3520},
+            {"phase": "lift", "start_s": 4.3520, "end_s": 17.9660},
+            {"phase": "rest", "start_s": 17.9660, "end_s": 26.3900},
+            {"phase": "lift", "start_s": 26.3900, "end_s": 40.6820},
+            {"phase": "rest", "start_s": 40.6820, "end_s": 48.1880},
+            {"phase": "lift", "start_s": 48.1880, "end_s": 62.6000},
+        ],
+        "P4": [
+            {"phase": "rest", "start_s": 0.0, "end_s": 5.0020},
+            {"phase": "lift", "start_s": 5.0020, "end_s": 20.8540},
+            {"phase": "rest", "start_s": 20.8540, "end_s": 26.4480},
+            {"phase": "lift", "start_s": 26.4480, "end_s": 43.6560},
+            {"phase": "rest", "start_s": 43.6560, "end_s": 50.6500},
+            {"phase": "lift", "start_s": 50.6500, "end_s": 66.7580},
+        ],
+        "P5": [
+            {"phase": "rest", "start_s": 0.0, "end_s": 4.5480},
+            {"phase": "lift", "start_s": 4.5480, "end_s": 20.0400},
+            {"phase": "rest", "start_s": 20.0400, "end_s": 28.4940},
+            {"phase": "lift", "start_s": 28.4940, "end_s": 45.4440},
+            {"phase": "rest", "start_s": 45.4440, "end_s": 52.5660},
+            {"phase": "lift", "start_s": 52.5660, "end_s": 69.3460},
+        ],
+        "P6": [
+            {"phase": "rest", "start_s": 0.0, "end_s": 4.6600},
+            {"phase": "lift", "start_s": 4.6600, "end_s": 18.6860},
+            {"phase": "rest", "start_s": 18.6860, "end_s": 27.7940},
+            {"phase": "lift", "start_s": 27.7940, "end_s": 42.8460},
+            {"phase": "rest", "start_s": 42.8460, "end_s": 51.2260},
+            {"phase": "lift", "start_s": 51.2260, "end_s": 67.7320},
+        ],
+        "P7": [
+            {"phase": "rest", "start_s": 0.0, "end_s": 2.7880},
+            {"phase": "lift", "start_s": 2.7880, "end_s": 20.0240},
+            {"phase": "rest", "start_s": 20.0240, "end_s": 28.9380},
+            {"phase": "lift", "start_s": 28.9380, "end_s": 45.5820},
+            {"phase": "rest", "start_s": 45.5820, "end_s": 53.2720},
+            {"phase": "lift", "start_s": 53.2720, "end_s": 67.0000},
+        ],
+        "P8": [
+            {"phase": "rest", "start_s": 0.0, "end_s": 12.7400},
+            {"phase": "lift", "start_s": 12.7400, "end_s": 28.1120},
+            {"phase": "rest", "start_s": 28.1120, "end_s": 37.1860},
+            {"phase": "lift", "start_s": 37.1860, "end_s": 51.2420},
+            {"phase": "rest", "start_s": 51.2420, "end_s": 58.5760},
+            {"phase": "lift", "start_s": 58.5760, "end_s": 73.1480},
+        ],
+        "P9": [
+            {"phase": "rest", "start_s": 0.0, "end_s": 4.5920},
+            {"phase": "lift", "start_s": 4.5920, "end_s": 18.8180},
+            {"phase": "rest", "start_s": 18.8180, "end_s": 26.7700},
+            {"phase": "lift", "start_s": 26.7700, "end_s": 40.2180},
+            {"phase": "rest", "start_s": 40.2180, "end_s": 48.6620},
+            {"phase": "lift", "start_s": 48.6620, "end_s": 63.0940},
+        ],
+        "P10": [
+            {"phase": "rest", "start_s": 0.0, "end_s": 4.9460},
+            {"phase": "lift", "start_s": 4.9460, "end_s": 18.6860},
+            {"phase": "rest", "start_s": 18.6860, "end_s": 27.9280},
+            {"phase": "lift", "start_s": 27.9280, "end_s": 43.1300},
+            {"phase": "rest", "start_s": 43.1300, "end_s": 51.8840},
+            {"phase": "lift", "start_s": 51.8840, "end_s": 65.1800},
+        ]
+    }
+    # PART 1b: lift to rest segmentation
     subjects_emg: dict[str, Subject] = {}
     for subject_id in ids:
         # Note: data folder should exist
-        path = os.path.join("data", f"BSL-EMG-Book{subject_id}.csv")
+        path = os.path.join("local/data", f"BSL-EMG-Book{subject_id}.csv")
+        subject_event = subject_events[subject_id]
         # where padding
         subj = Subject.from_csv(name=subject_id, path=path, fs=FS_EMG, target_len=EMG_LEN)
         subjects_emg[subject_id] = subj
@@ -100,11 +177,8 @@ if __name__ == '__main__':
 
     # example with "P2"
     print(subjects_emg["P2"].df.info())
-
     s = subjects_emg["P2"]
-
     TimeSrsTools.emg_preprocess_hilbert(s)
-
     plt.figure(figsize=(10, 4))
     plt.plot(s.df["time"], s.df["EMG_env"], label="Hilbert-envelope")
     plt.title("EMG Hilbert-envelope – " + s.name)
@@ -114,9 +188,12 @@ if __name__ == '__main__':
     plt.tight_layout()
     plt.show()
 
+    # call emg_preprocess
+
+    # create and save events df
+
     # PART 2: PPG Processing:
     print("\n=== STARTING PPG PROCESSING ===")
-
     # Load full dataset
     # Note: change this to ourData.csv location
     ppg_data_path = "./local/data/ourData.csv"
@@ -129,14 +206,13 @@ if __name__ == '__main__':
 
     # Build list of subject signals
     signals = []
-    for i, arr in enumerate(df.to_numpy()):
-        signals.append(PPGProcTools.create_dotmaps_for_pyPPG(arr, str(i), RECORDER_PPG_FS))
 
-    # Process all subjects
-    for idx, sig in enumerate(signals):
-        if idx == 4:
-            print("Ignore 4th subject (not our data)")
-            continue
+    patient_arrays = [arr for idx, arr in enumerate(df.to_numpy()) if idx != 4]
+
+    for idx, arr in enumerate(patient_arrays):
+        sig = PPGProcTools.create_dotmaps_for_pyPPG(arr, str(idx + 2), RECORDER_PPG_FS)
+        signals.append(sig)
+
         try:
             process_ppg_subject(idx, sig)
         except Exception as e:
@@ -144,3 +220,10 @@ if __name__ == '__main__':
             continue
 
     print("\nAll PPG subjects processed.")
+
+    # PART 4: windowing and extract features
+    # these values are calculated by 2 second windows, shit is 1.5 sec
+    # all these values are projected back to the subject's emg df and ppg df.
+    # store PPG amplitudes
+    # store EMG root mean squared values
+    # plot

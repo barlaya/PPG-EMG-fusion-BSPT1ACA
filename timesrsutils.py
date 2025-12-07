@@ -6,6 +6,7 @@ import pywt
 from numpy.lib.stride_tricks import sliding_window_view
 
 class TimeSrsTools:
+
     @staticmethod
     def emg_bandpass_rectify(x, fs, low=20, high=220, order=4):
         nyq = 0.5 * fs

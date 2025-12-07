@@ -1,8 +1,12 @@
 import pandas as pd
 import numpy as np
 
+#for downsampling
+from math import gcd
+from scipy.signal import resample_poly
+
 class Subject:
-    def __init__(self, name: str, df: pd.DataFrame, fs: float):
+    def __init__(self, name: str, df: pd.DataFrame, fs: int):
         """
         df:'time' column, 'Integrated EMG' (mV) and contains 'EMG'  (mV) of subject
         fs: sampling frequency (Hz)
@@ -13,12 +17,13 @@ class Subject:
 
         self.stats: dict = {}
         self.features: dict = {}
-        self.chunks: list[pd.DataFrame] = []
+        self.active_chunks: list[pd.DataFrame] = []
+        self.passive_chunks: list[pd.DataFrame] = []
         self.sqi: dict = {}
 
     @classmethod
 
-    def from_csv(cls, name: str, path: str, fs: float, target_len: int | None=None):
+    def from_csv(cls, name: str, path: str, fs: int, target_len: int | None=None):
         df = pd.read_csv(path, delimiter=";", encoding="utf-8")
         df = df.replace(",", ".", regex=True)
 
@@ -50,8 +55,27 @@ class Subject:
 
         return cls(name=name, df=df, fs=fs)
 
-    #def load_csv(self):
-    #    return self.df
+    def resample_data(self, new_frequency):
+        g = gcd(self.fs, new_frequency)
+        up = new_frequency // g
+        down = self.fs // g
+
+        resampled_signals = {}
+
+        for col in [col for col in self.df.columns if col != "time"]:
+            x = self.df[col].to_numpy()
+            y = resample_poly(x, up=up, down=down)
+            resampled_signals[col] = y
+
+        n_new = len(next(iter(resampled_signals.values())))
+
+        t0 = self.df["time"].iloc[0]
+        resampled_signals["time"] = t0 + np.arange(n_new) / new_frequency
+
+        self.df = pd.DataFrame(resampled_signals)
+        self.fs = new_frequency
+
+        return self
 
     def get_column(self, column: str) -> pd.Series:
         return self.df[column]
@@ -72,5 +96,20 @@ class Subject:
     def add_sqi(self, name: str, sqi_values):
         self.sqi[name] = sqi_values
 
-    def add_chunk(self, chunk_df: pd.DataFrame):
-        self.chunks.append(chunk_df)
+    def chunk_subject_by_events(self, events: list[dict]):
+        for event in events:
+            event_type = event["phase"]
+
+            event_start = event["start_s"]
+            event_end = event["end_s"]
+
+            query = (self.df["time"] >= event_start) & (self.df["time"] <= event_end)
+
+            chunk = self.df[query]
+
+            if event_type == "rest":
+                self.passive_chunks.append(chunk)
+            else:
+                self.active_chunks.append(chunk)
+
+        return self
