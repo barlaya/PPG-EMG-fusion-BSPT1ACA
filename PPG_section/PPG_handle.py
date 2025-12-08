@@ -3,10 +3,12 @@ import pandas as pd
 from dotmap import DotMap
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
+from timesrsutils import TimeSrsTools
 from pyPPG import PPG, Fiducials, Biomarkers
 import pyPPG.preproc as PP
 import pyPPG.fiducials as FP
 import pyPPG.biomarkers as BM
+import os
 
 
 # create separate PPG handler
@@ -124,3 +126,36 @@ class PPGProcTools:
         bm_defs, bm_vals, bm_stats = bmex.get_biomarkers()
         bm = Biomarkers(bm_defs=bm_defs, bm_vals=bm_vals, bm_stats=bm_stats)
         return bm_defs, bm_vals, bm_stats, bm
+
+    @staticmethod # modified versoon of load_fiducials: https://pyppg.readthedocs.io/en/latest/_modules/pyPPG/datahandling.html#load_fiducials
+    def load_fiducials_from_csv(csv_path):
+        """
+        Loads fiducial points from a CSV file into a pandas DataFrame.
+
+        Expected CSV columns:
+        Index of pulse, on, sp, dn, dp, off, u, v, w, a, b, c, d, e, f, p1, p2
+        """
+
+        try:
+            if not os.path.exists(csv_path):
+                print(f"File not found: {csv_path}")
+                return None
+
+            # Read CSV
+            df = pd.read_csv(csv_path)
+
+            # Cleanup: Drop 'Index of pulse' if it exists as we just want the fiducial columns
+            if 'Index of pulse' in df.columns:
+                df = df.drop(columns=['Index of pulse'])
+
+            # Ensure all standard pyPPG columns exist (fill missing with nan if necessary)
+            expected_cols = ['on', 'sp', 'dn', 'dp', 'off', 'u', 'v', 'w', 'a', 'b', 'c', 'd', 'e', 'f', 'p1', 'p2']
+            for col in expected_cols:
+                if col not in df.columns:
+                    df[col] = np.nan
+
+            return df
+
+        except Exception as e:
+            print(f"Error loading fiducials from CSV: {e}")
+            return None
