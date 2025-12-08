@@ -7,6 +7,10 @@ from PPG_section.PPG_handle import PPGProcTools
 from main import PPG_BASE_DIR, PPG_TIME_ARR, RECORDER_PPG_FS
 from pyPPG.datahandling import plot_fiducials, save_data, load_data
 
+"""
+sort of unfinished file. Supposed to run functions after processing for visualization.
+"""
+
 # config
 # Match these with your main pipeline settings
 DO_PPG_PLOT = False  # disable live plotting for batch PPG processing

@@ -32,7 +32,6 @@ EMG_LEN = 70000
 PPG_LEN = int(FS_PPG_TARGET * TARGET_DURATION_S)
 
 
-
 # PPG pipeline calls:
 def process_ppg_subject(index, signal):
     """
@@ -81,13 +80,13 @@ def process_ppg_subject(index, signal):
 
     print(f"Finished PPG Subject {index}")
     # return values usefull for further processing
-    return s, fp, fid #, bm_defs, bm_vals, bm_stats, bm, fp_new
+    return s, fp, fid  # , bm_defs, bm_vals, bm_stats, bm, fp_new
+
 
 if __name__ == '__main__':
 
     # PART 1: EMG Processing
     print("\n=== STARTING EMG PROCESSING ===")
-
     ids = ['P2', 'P3', 'P4', 'P5', 'P6', 'P7', 'P8', 'P9', 'P10']
     # moved subject events to timersutils as a global constant it seemed fitting. More spacious code.
     subject_events = SUBJECT_EVENTS
@@ -107,7 +106,7 @@ if __name__ == '__main__':
 
     # example with "P2"
     print(subjects_emg["P2"].df.info())
-    s = subjects_emg["P2"]
+    s = subjects_emg["P2"]  # TODO naming conflict: s = some ppg signal vs s = subject object
     TimeSrsTools.emg_preprocess_hilbert(s)
     plt.figure(figsize=(10, 4))
     plt.plot(s.df["time"], s.df["EMG_env"], label="Hilbert-envelope")
@@ -120,7 +119,6 @@ if __name__ == '__main__':
 
     # TODO call emg_preprocess for all
 
-
     # PART 2: PPG Processing:
     print("\n=== STARTING PPG PROCESSING ===")
 
@@ -132,17 +130,20 @@ if __name__ == '__main__':
 
     # Load full dataset
     df = pd.read_csv(ppg_data_path)
-    df = df.drop(columns=["tstamp", "padArr_4"], errors="ignore")  # drop sub 4 right away -> indexing will be better
+    df = df.drop(columns=["tstamp"], index=4, errors="ignore")  # drop sub. 4 right away -> indexing will be better
 
     # Process all subjects
-    for idx, sig in enumerate(df.to_numpy()):
+    for idx, sig in enumerate(df.to_numpy()):  # the idx should be aligned with both ppg and emg data
         try:
+            key = ids[idx]
+            subject = subjects_emg[key]
+            events = subject_events[key]
+            subject = subject.resample_data(200)
             sig = PPGProcTools.create_dotmaps_for_pyPPG(sig, ids[idx], RECORDER_PPG_FS)
 
-            process_ppg_subject(ids[idx], sig)
+            # Note: process_ppg_subject could return more if needed. Adjust if so
+            signal, _, _ = process_ppg_subject(ids[idx], sig)
             # process_ppg_subject(idx + 2, sig)
-            # TODO process_ppg_subject should return signal as is
-            signal = PPGProcTools.preprocess_signal(sig)
 
             # Filter out first 5 seconds
             usable_signal = signal.vpg[signal.fs * 5: len(subject.df) + signal.fs * 5]
@@ -161,14 +162,13 @@ if __name__ == '__main__':
             active_windows_mav = [np.mean(np.abs(window["Integrated EMG"])) for window in subject.active_windows]
             active_windows_ppg_amplitude = [np.max(window["ppg"]) for window in subject.active_windows]
 
-            passive_windows_rms = [np.sqrt(np.mean(window["Integrated EMG"] ** 2)) for window in subject.passive_windows]
+            passive_windows_rms = [np.sqrt(np.mean(window["Integrated EMG"] ** 2)) for window in
+                                   subject.passive_windows]
             passive_windows_mav = [np.mean(np.abs(window["Integrated EMG"])) for window in subject.passive_windows]
             passive_windows_ppg_amplitude = [np.max(window["ppg"]) for window in subject.passive_windows]
-            sig = PPGProcTools.create_dotmaps_for_pyPPG(sig, ids[idx], RECORDER_PPG_FS)
-            process_ppg_subject(ids[idx], sig)
+            # sig = PPGProcTools.create_dotmaps_for_pyPPG(sig, ids[idx], RECORDER_PPG_FS)
+            # process_ppg_subject(ids[idx], sig)
         except Exception as e:
-            # TODO: choose correct warning
-            print(f" Error processing PPG subject {idx+2}: {e}")
             print(f" Error processing PPG subject {ids[idx]}: {e}")
             continue
 
