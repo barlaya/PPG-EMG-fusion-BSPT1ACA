@@ -38,7 +38,7 @@ def process_ppg_subject(index, signal):
     Encapsulates the single subject analysis logic from post_pipeline_calls.py
     """
     # ___SINGLE_SUBJECT_ANALYSIS___
-    subject_dir = os.path.join(PPG_BASE_DIR, f"Subject_{index}")
+    subject_dir = os.path.join(PPG_BASE_DIR, signal.name)
     os.makedirs(subject_dir, exist_ok=True)
 
     print(f"\n--- Processing PPG Subject {index} ---")
@@ -115,9 +115,9 @@ if __name__ == '__main__':
     plt.ylabel("Amplitude")
     plt.legend()
     plt.tight_layout()
-    plt.show()
+    # plt.show()
+    plt.close()
 
-    # TODO call emg_preprocess for all
 
     # PART 2: PPG Processing:
     print("\n=== STARTING PPG PROCESSING ===")
@@ -134,6 +134,9 @@ if __name__ == '__main__':
 
     # Process all subjects
     for idx, sig in enumerate(df.to_numpy()):  # the idx should be aligned with both ppg and emg data
+        # for debug. Remove later
+        if idx > 3:
+            continue
         try:
             key = ids[idx]
             subject = subjects_emg[key]
@@ -147,6 +150,24 @@ if __name__ == '__main__':
 
             # Filter out first 5 seconds
             usable_signal = signal.vpg[signal.fs * 5: len(subject.df) + signal.fs * 5]
+            # TODO should this be moved to process ppg block?
+            # 5. NEW: Plot VPG vs EMG with Events
+            emg_trace = subject.df["Integrated EMG"].values
+
+            ppg_trace = usable_signal
+            # Ensure array lengths match
+            min_len = min(len(emg_trace), len(ppg_trace), len(PPG_TIME_ARR))
+            vpg_emg_segment = (0, PPG_TIME_ARR[min_len])  # Not recommended to change.
+            PPGProcTools.plot_vpg_emg(
+                x=PPG_TIME_ARR[:min_len],
+                signal_1=ppg_trace[:min_len],
+                signal_2=emg_trace[:min_len],
+                subject_id=key,
+                title=PPGProcTools.naming_convention(signal.name, vpg_emg_segment) + "_EMG_and_PPG",
+                xlim=vpg_emg_segment,
+                save_dir=os.path.join(PPG_BASE_DIR, signal.name) + os.sep,
+                do_plot=DO_PPG_PLOT
+            )
 
             subject.set_column("ppg", usable_signal).chunk_subject_by_events(events)
             # sort by muscle activity
@@ -168,6 +189,7 @@ if __name__ == '__main__':
             passive_windows_ppg_amplitude = [np.max(window["ppg"]) for window in subject.passive_windows]
             # sig = PPGProcTools.create_dotmaps_for_pyPPG(sig, ids[idx], RECORDER_PPG_FS)
             # process_ppg_subject(ids[idx], sig)
+
         except Exception as e:
             print(f" Error processing PPG subject {ids[idx]}: {e}")
             continue
