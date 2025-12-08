@@ -1,7 +1,6 @@
 import os
 import numpy as np
 import pandas as pd
-from scipy.signal import resample_poly
 import matplotlib.pyplot as plt
 
 # EMG imports:
@@ -188,9 +187,8 @@ if __name__ == '__main__':
     plt.tight_layout()
     plt.show()
 
-    # call emg_preprocess
+    # call emg_preprocess for all
 
-    # create and save events df
 
     # PART 2: PPG Processing:
     print("\n=== STARTING PPG PROCESSING ===")
@@ -208,22 +206,44 @@ if __name__ == '__main__':
     signals = []
 
     patient_arrays = [arr for idx, arr in enumerate(df.to_numpy()) if idx != 4]
+    # align patient naming convention
+    for idx, (key, subject) in enumerate(subjects_emg.items()):
+        events = subject_events[key]
+        arr = patient_arrays[idx]
 
-    for idx, arr in enumerate(patient_arrays):
+        subject = subject.resample_data(200)
         sig = PPGProcTools.create_dotmaps_for_pyPPG(arr, str(idx + 2), RECORDER_PPG_FS)
         signals.append(sig)
 
         try:
-            process_ppg_subject(idx, sig)
+            process_ppg_subject(idx + 2, sig)
+
+            signal = PPGProcTools.preprocess_signal(sig)
+
+            # Filter out first 5 seconds
+            usable_signal = signal.vpg[signal.fs * 5: len(subject.df) + signal.fs * 5]
+
+            subject.set_column("ppg", usable_signal).chunk_subject_by_events(events)
+            # sort by muscle activity
+            for active_chunk in subject.active_chunks:
+                subject.active_windows.extend(TimeSrsTools.window_dataframe(active_chunk, subject.fs * 2, subject.fs))
+
+            for passive_chunk in subject.passive_chunks:
+                subject.passive_windows.extend(TimeSrsTools.window_dataframe(passive_chunk, subject.fs * 2, subject.fs))
+
+            subject.apply_gaussian_windowing(["Integrated EMG"], 0.4)
+
+            active_windows_rms = [np.sqrt(np.mean(window["Integrated EMG"] ** 2)) for window in subject.active_windows]
+            active_windows_mav = [np.mean(np.abs(window["Integrated EMG"])) for window in subject.active_windows]
+            active_windows_ppg_amplitude = [np.max(window["ppg"]) for window in subject.active_windows]
+
+            passive_windows_rms = [np.sqrt(np.mean(window["Integrated EMG"] ** 2)) for window in subject.passive_windows]
+            passive_windows_mav = [np.mean(np.abs(window["Integrated EMG"])) for window in subject.passive_windows]
+            passive_windows_ppg_amplitude = [np.max(window["ppg"]) for window in subject.passive_windows]
         except Exception as e:
-            print(f" Error processing PPG subject {idx}: {e}")
+            print(f" Error processing PPG subject {idx+2}: {e}")
             continue
 
     print("\nAll PPG subjects processed.")
 
-    # PART 4: windowing and extract features
-    # these values are calculated by 2 second windows, shit is 1.5 sec
-    # all these values are projected back to the subject's emg df and ppg df.
-    # store PPG amplitudes
-    # store EMG root mean squared values
     # plot

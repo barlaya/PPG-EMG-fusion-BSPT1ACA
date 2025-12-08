@@ -3,7 +3,7 @@ import numpy as np
 
 #for downsampling
 from math import gcd
-from scipy.signal import resample_poly
+from scipy.signal import resample_poly, windows
 
 class Subject:
     def __init__(self, name: str, df: pd.DataFrame, fs: int):
@@ -19,6 +19,8 @@ class Subject:
         self.features: dict = {}
         self.active_chunks: list[pd.DataFrame] = []
         self.passive_chunks: list[pd.DataFrame] = []
+        self.active_windows: list[pd.DataFrame] = []
+        self.passive_windows: list[pd.DataFrame] = []
         self.sqi: dict = {}
 
     @classmethod
@@ -82,6 +84,7 @@ class Subject:
 
     def set_column(self, column: str, value):
         self.df[column] = value
+        return self
 
     def summary(self) -> pd.DataFrame:
         self.stats["describe"] = self.df.describe()
@@ -111,5 +114,19 @@ class Subject:
                 self.passive_chunks.append(chunk)
             else:
                 self.active_chunks.append(chunk)
+
+        return self
+
+    def apply_gaussian_windowing(self, columns, sigma=0.4):
+        for idx in range(len(self.active_windows)):
+            window_length = len(self.active_windows[idx])
+            gauss_win = windows.gaussian(window_length, std=sigma * window_length).reshape(-1, 1)
+            self.active_windows[idx][columns] = self.active_windows[idx][columns].to_numpy() * gauss_win
+
+        for idx in range(len(self.passive_windows)):
+            window_length = len(self.passive_windows[idx])
+            gauss_win = windows.gaussian(window_length, std=sigma * window_length).reshape(-1, 1)
+
+            self.passive_windows[idx][columns] = self.passive_windows[idx][columns].to_numpy() * gauss_win
 
         return self
