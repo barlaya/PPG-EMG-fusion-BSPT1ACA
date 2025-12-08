@@ -3,10 +3,12 @@ import pandas as pd
 from dotmap import DotMap
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
+from timesrsutils import TimeSrsTools, SUBJECT_EVENTS
 from pyPPG import PPG, Fiducials, Biomarkers
 import pyPPG.preproc as PP
 import pyPPG.fiducials as FP
 import pyPPG.biomarkers as BM
+import os
 
 
 # create separate PPG handler
@@ -23,7 +25,7 @@ class PPGProcTools:
         s.end_sig = len(array)
         s.v = array.astype(float)  # pyPPG works with floats!
         s.fs = fs
-        s.name = f"patient {index}"
+        s.name = f"Subject_{index}"
         return s
 
     @staticmethod
@@ -65,6 +67,67 @@ class PPGProcTools:
         if do_plot:
             plt.show()
         plt.savefig(save_dir + title + ".png")
+        plt.close(fig)
+
+    @staticmethod
+    def plot_vpg_emg(x: np.ndarray, signal_1: np.ndarray, signal_2: np.ndarray, subject_id: str,
+                     title: str, xlim: tuple = (0, 10), save_dir: str = "./", do_plot=False):
+
+        # Create figure
+        fig, ax1 = plt.subplots(figsize=(12, 6))
+
+        # Plot Signal 1 (e.g., PPG/VPG)
+        color1 = 'tab:blue'
+        ax1.set_xlabel('Time (s)')
+        ax1.set_ylabel('Signal 1 (PPG/VPG)', color=color1, fontweight='bold')
+        ax1.plot(x, signal_1, color=color1, linewidth=1.5, label='Signal 1')
+        ax1.tick_params(axis='y', labelcolor=color1)
+        ax1.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
+
+        # Create secondary axis (Right Y-axis)
+        ax2 = ax1.twinx()
+        color2 = 'tab:orange'
+        ax2.set_ylabel('Signal 2 (EMG)', color=color2, fontweight='bold')
+        # Plot Signal 2 with transparency to see overlap
+        ax2.plot(x, signal_2, color=color2, linewidth=1, alpha=0.6, label='Signal 2')
+        ax2.tick_params(axis='y', labelcolor=color2)
+
+        # Highlight Lift/Rest Events
+        # TODO fix duplicating legend text: rest lift rest lift etc. -> should be rest lift
+        events = SUBJECT_EVENTS[subject_id]
+
+        for event in events:
+            start = event["start_s"]
+            end = event["end_s"]
+            phase = event["phase"].lower()
+
+            # Skip drawing if event is entirely outside current view
+            if end < xlim[0] or start > xlim[1]:
+                continue
+            mid_point = (start + end) / 2
+            if phase == "lift":
+                ax1.axvspan(start, end, color='green', alpha=0.15, label=phase)
+                ax1.text(mid_point, ax1.get_ylim()[1], "LIFT",
+                         ha='center', va='bottom', fontsize=9, color='green', fontweight='bold')
+            elif phase == "rest":
+                ax1.axvspan(start, end, color='gray', alpha=0.1, label=phase)
+                ax1.text(mid_point, ax1.get_ylim()[1], "REST",
+                         ha='center', va='bottom', fontsize=9, color='gray', fontweight='bold')
+        # Set Limits and Title
+        ax1.set_xlim(xlim)
+        fig.suptitle(title, fontsize=14)
+
+        # Combine legends from both axes
+        lines_1, labels_1 = ax1.get_legend_handles_labels()
+        lines_2, labels_2 = ax2.get_legend_handles_labels()
+        ax1.legend(lines_1 + lines_2, labels_1 + labels_2, loc='upper right')
+        fig.tight_layout()
+
+        plt.savefig((save_dir + title + ".png"), dpi=150)
+
+        if do_plot:
+            plt.show()
+
         plt.close(fig)
 
     @staticmethod
@@ -124,3 +187,37 @@ class PPGProcTools:
         bm_defs, bm_vals, bm_stats = bmex.get_biomarkers()
         bm = Biomarkers(bm_defs=bm_defs, bm_vals=bm_vals, bm_stats=bm_stats)
         return bm_defs, bm_vals, bm_stats, bm
+
+    # note: do we even use this?
+    @staticmethod  # modified version of load_fiducials: https://pyppg.readthedocs.io/en/latest/_modules/pyPPG/datahandling.html#load_fiducials
+    def load_fiducials_from_csv(csv_path):
+        """
+        Loads fiducial points from a CSV file into a pandas DataFrame.
+
+        Expected CSV columns:
+        Index of pulse, on, sp, dn, dp, off, u, v, w, a, b, c, d, e, f, p1, p2
+        """
+
+        try:
+            if not os.path.exists(csv_path):
+                print(f"File not found: {csv_path}")
+                return None
+
+            # Read CSV
+            df = pd.read_csv(csv_path)
+
+            # Cleanup: Drop 'Index of pulse' if it exists as we just want the fiducial columns
+            if 'Index of pulse' in df.columns:
+                df = df.drop(columns=['Index of pulse'])
+
+            # Ensure all standard pyPPG columns exist (fill missing with nan if necessary)
+            expected_cols = ['on', 'sp', 'dn', 'dp', 'off', 'u', 'v', 'w', 'a', 'b', 'c', 'd', 'e', 'f', 'p1', 'p2']
+            for col in expected_cols:
+                if col not in df.columns:
+                    df[col] = np.nan
+
+            return df
+
+        except Exception as e:
+            print(f"Error loading fiducials from CSV: {e}")
+            return None
