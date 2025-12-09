@@ -4,4 +4,5 @@ Team Project work for Biomedical Signal Processing 2025 class. Our scope is to e
 
 ## Install:
 python.exe -m pip install pyPPG 
+
 pip install neurokit2
