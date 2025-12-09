@@ -22,7 +22,7 @@ class TimeSrsTools:
                 f"Invalid band: low={low}Hz, high={high}Hz for fs={fs}Hz "
                 f"(normalized low={low_norm}, high={high_norm})"
             )
-        b, a = butter(order, [low / nyq, high / nyq], btype='bandpass')
+        b, a = butter(order, [low/nyq, high/nyq], btype='bandpass')
         x_filt = filtfilt(b, a, x)
         x_rect = np.abs(x_filt)
         return x_filt, x_rect
@@ -51,7 +51,7 @@ class TimeSrsTools:
         nyq = 0.5 * fs
         if not (0 < cutoff < nyq):
             raise ValueError(f"Invalid lowpass cutoff={cutoff} Hz for fs={fs} Hz "
-                             f"(must satisfy 0 < cutoff < fs/2={nyq}).")
+                f"(must satisfy 0 < cutoff < fs/2={nyq}).")
         b, a = butter(order, cutoff, btype="lowpass", fs=fs)
         y = filtfilt(b, a, x)
         return y
@@ -83,18 +83,18 @@ class TimeSrsTools:
     def median_freq(f, Pxx):
         cumsum = np.cumsum(Pxx)
         total = cumsum[-1]
-        idx = np.searchsorted(cumsum, total / 2.0)
+        idx = np.searchsorted(cumsum, total/2.0)
         return f[idx]
 
     @staticmethod
     def dwt_energy(x, wavelet="db4", level=4):
         coeffs = pywt.wavedec(x, wavelet, level=level)
-        energies = [np.sum(c ** 2) for c in coeffs]
+        energies = [np.sum(c**2) for c in coeffs]
         return np.array(energies)
 
     @staticmethod
     def window_rms(x):
-        return np.sqrt(np.mean(x ** 2))
+        return np.sqrt(np.mean(x**2))
 
     @staticmethod
     def waveform_length(x):

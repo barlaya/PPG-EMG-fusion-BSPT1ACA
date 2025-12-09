@@ -2,6 +2,7 @@ import os
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import json
 
 # EMG imports:
 from backbone import Subject
@@ -18,7 +19,7 @@ from PPG_section.PPG_handle import PPGProcTools
 RECORDER_PPG_FS = int(28057 / 140)
 PPG_TIME_ARR = np.arange(0, 28057) / RECORDER_PPG_FS
 DO_PPG_PLOT = False  # disable live plotting for batch PPG processing
-PPG_SEGMENT = (0, 140)  # segment in seconds to visualize
+PPG_SEGMENT = (0, 15)  # segment in seconds to visualize
 
 # Output directory for PPG
 PPG_BASE_DIR = os.path.join("temp_dir", "PPG_AllSubjects")
@@ -37,50 +38,68 @@ def process_ppg_subject(index, signal):
     """
     Encapsulates the single subject analysis logic from post_pipeline_calls.py
     """
-    # ___SINGLE_SUBJECT_ANALYSIS___
     subject_dir = os.path.join(PPG_BASE_DIR, signal.name)
     os.makedirs(subject_dir, exist_ok=True)
+    manifest_path = os.path.join(subject_dir, "manifest.json")
 
-    print(f"\n--- Processing PPG Subject {index} ---")
-
-    # Naming
+    # Define Naming Convention for plots
     title_root = PPGProcTools.naming_convention(signal.name, PPG_SEGMENT)
 
-    # 1. Raw segment plot
+    s, fp, bm = None, None, None
+
+    # --- PHASE 1: LOAD OR CALCULATE ---
+    if os.path.exists(manifest_path):
+        print(f"\n--- Subject {index} found in cache. Loading... ---")
+        try:
+            s, fp, bm = PPGProcTools.load_subject_data(index, PPG_BASE_DIR)
+            print(f"Loaded successfully from {manifest_path}")
+        except Exception as e:
+            print(f"Cache load failed ({e}). Falling back to processing...")
+            s = None  # Reset to force processing
+
+    if s is None:
+        print(f"\n--- Processing PPG Subject {index} ---")
+
+        # 1. Preprocess
+        signal = PPGProcTools.preprocess_signal(signal)
+
+        # 2. Fiducials
+        # returns 's' (PPG Object), 'fp' (Fiducials Object), 'fid' (dict)
+        s, fp, fid = PPGProcTools.compute_fiducials(signal)
+
+        # 3. SQI Check (Optional print)
+        ppgSQI = round(np.mean(SQI.get_ppgSQI(ppg=s.ppg, fs=s.fs, annotation=fp.sp)) * 100, 2)
+        print(f"Subject {index} - Mean PPG SQI = {ppgSQI}%")
+
+        # 4. Biomarkers
+        bm_defs, bm_vals, bm_stats, bm = PPGProcTools.compute_biomarkers(s, fp)
+
+        # 5. Save Results (and auto-generate manifest)
+        PPGProcTools.save_subject_results(s, fp, bm, subject_dir)
+
+    # PLOTTING
+    # 1. Raw Segment Plot
     PPGProcTools.plot_segment_for_signal(
-        PPG_TIME_ARR, signal.v, title_root + "_raw", xlim=PPG_SEGMENT,
+        PPG_TIME_ARR, s.v, title_root + "_raw", xlim=PPG_SEGMENT,
         save_dir=subject_dir + os.sep, do_plot=DO_PPG_PLOT
     )
 
-    # 2. Preprocess
-    signal = PPGProcTools.preprocess_signal(signal)
-
-    # 3. Filtered plots
+    # 2. Filtered Signal Variants (PPG, VPG, APG, JPG)
     PPGProcTools.plot_processed_signal_variants(
-        PPG_TIME_ARR, signal, title_root + "_filtered", xlim=PPG_SEGMENT,
+        PPG_TIME_ARR, s, title_root + "_filtered", xlim=PPG_SEGMENT,
         save_dir=subject_dir + os.sep, do_plot=DO_PPG_PLOT
     )
 
-    # 4. Fiducials
-    s, fp, fid = PPGProcTools.compute_fiducials(signal)
-    canvas = plot_fiducials(s, fp, savefig=False, savingfolder=subject_dir, legend_fontsize=12, show_fig=False)
-    PPGProcTools.fiducials_segment_plot(canvas, title_root + "_fiducials", xlim=PPG_SEGMENT,
-                                        save_dir=subject_dir + os.sep)
-
-    # 5. SQI
-    ppgSQI = round(np.mean(SQI.get_ppgSQI(ppg=s.ppg, fs=s.fs, annotation=fp.sp)) * 100, 2)
-    print(f"Subject {index} - Mean PPG SQI = {ppgSQI}%")
-
-    # 6. Biomarkers
-    bm_defs, bm_vals, bm_stats, bm = PPGProcTools.compute_biomarkers(s, fp)
-
-    # 7. Save results
-    fp_new = Fiducials(fp.get_fp() + s.start_sig)
-    save_data(s=s, fp=fp_new, bm=bm, savingformat='csv', savingfolder=subject_dir)
+    # 3. Fiducials Plot
+    try:
+        canvas = plot_fiducials(s, fp, savefig=False, savingfolder=subject_dir, legend_fontsize=12, show_fig=False)
+        PPGProcTools.fiducials_segment_plot(canvas, title_root + "_fiducials", xlim=PPG_SEGMENT,
+                                            save_dir=subject_dir + os.sep)
+    except Exception as e:
+        print(f"Warning: Could not plot fiducials for {index}: {e}")
 
     print(f"Finished PPG Subject {index}")
-    # return values usefull for further processing
-    return s, fp, fid  # , bm_defs, bm_vals, bm_stats, bm, fp_new
+    return s, fp, bm
 
 
 if __name__ == '__main__':
@@ -106,7 +125,7 @@ if __name__ == '__main__':
 
     # example with "P2"
     print(subjects_emg["P2"].df.info())
-    s = subjects_emg["P2"]  # TODO naming conflict: s = some ppg signal vs s = subject object
+    s = subjects_emg["P2"]  # TODO naming may cause confusion or conflict: s = some ppg signal vs s = subject object
     TimeSrsTools.emg_preprocess_hilbert(s)
     plt.figure(figsize=(10, 4))
     plt.plot(s.df["time"], s.df["EMG_env"], label="Hilbert-envelope")
@@ -134,9 +153,6 @@ if __name__ == '__main__':
 
     # Process all subjects
     for idx, sig in enumerate(df.to_numpy()):  # the idx should be aligned with both ppg and emg data
-        # for debug. Remove later
-        if idx > 3:
-            continue
         try:
             key = ids[idx]
             subject = subjects_emg[key]
