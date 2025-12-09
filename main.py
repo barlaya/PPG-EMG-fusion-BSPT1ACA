@@ -50,12 +50,8 @@ def process_ppg_subject(index, signal):
     # --- PHASE 1: LOAD OR CALCULATE ---
     if os.path.exists(manifest_path):
         print(f"\n--- Subject {index} found in cache. Loading... ---")
-        try:
-            s, fp, bm = PPGProcTools.load_subject_data(index, PPG_BASE_DIR)
-            print(f"Loaded successfully from {manifest_path}")
-        except Exception as e:
-            print(f"Cache load failed ({e}). Falling back to processing...")
-            s = None  # Reset to force processing
+        s, fp, bm = PPGProcTools.load_subject_data(index, PPG_BASE_DIR)
+        print(f"Loaded successfully from {manifest_path}")
 
     if s is None:
         print(f"\n--- Processing PPG Subject {index} ---")
@@ -74,8 +70,9 @@ def process_ppg_subject(index, signal):
         # 4. Biomarkers
         bm_defs, bm_vals, bm_stats, bm = PPGProcTools.compute_biomarkers(s, fp)
 
-        # 5. Save Results (and auto-generate manifest)
-        PPGProcTools.save_subject_results(s, fp, bm, subject_dir)
+        # 5. Save Results
+        fp_new = Fiducials(fp.get_fp() + s.start_sig)
+        save_data(s=s, fp=fp_new, bm=bm, savingformat='csv', savingfolder=subject_dir)
 
     # PLOTTING
     # 1. Raw Segment Plot
@@ -137,7 +134,6 @@ if __name__ == '__main__':
     # plt.show()
     plt.close()
 
-
     # PART 2: PPG Processing:
     print("\n=== STARTING PPG PROCESSING ===")
 
@@ -185,6 +181,9 @@ if __name__ == '__main__':
                 do_plot=DO_PPG_PLOT
             )
 
+            # STATISTICS WORKS
+            # TODO but not: move these into something like the ppg process
+            # 1. loads/sets
             subject.set_column("ppg", usable_signal).chunk_subject_by_events(events)
             # sort by muscle activity
             for active_chunk in subject.active_chunks:
@@ -203,8 +202,61 @@ if __name__ == '__main__':
                                    subject.passive_windows]
             passive_windows_mav = [np.mean(np.abs(window["Integrated EMG"])) for window in subject.passive_windows]
             passive_windows_ppg_amplitude = [np.max(window["ppg"]) for window in subject.passive_windows]
-            # sig = PPGProcTools.create_dotmaps_for_pyPPG(sig, ids[idx], RECORDER_PPG_FS)
-            # process_ppg_subject(ids[idx], sig)
+
+            active_data = pd.DataFrame({
+                'EMG_RMS': active_windows_rms,
+                'EMG_MAV': active_windows_mav,
+                'PPG_Amp': active_windows_ppg_amplitude,
+                'Phase': 'Lift'
+            })
+
+            passive_data = pd.DataFrame({
+                'EMG_RMS': passive_windows_rms,
+                'EMG_MAV': passive_windows_mav,
+                'PPG_Amp': passive_windows_ppg_amplitude,
+                'Phase': 'Rest'
+            })
+            phases_to_process = [("Lift", active_data), ("Rest", passive_data)]
+            # TODO unfinished correlation matrices. No negative correlation. We need to normalize?
+            for phase_name, df_phase in phases_to_process:
+                # 1. Calculate Correlation Matrix
+                cols_to_corr = ['EMG_RMS', 'EMG_MAV', 'PPG_Amp']
+                corr_matrix = df_phase[cols_to_corr].corr()
+
+                print(f"\nSubject {ids[idx]} [{phase_name}] Correlation Matrix:\n{corr_matrix}")
+
+                # 3. Plot Heatmap
+                plt.figure(figsize=(6, 5))
+
+                # Display matrix
+                im = plt.imshow(corr_matrix, cmap='coolwarm', vmin=-1, vmax=1)
+
+                # Add colorbar
+                cbar = plt.colorbar(im)
+                cbar.set_label('Pearson Correlation (r)', rotation=270, labelpad=15)
+
+                # Set labels
+                labels = ['EMG (RMS)', 'EMG (MAV)', 'PPG (Amp)']
+                plt.xticks(range(len(labels)), labels, rotation=45, ha='right')
+                plt.yticks(range(len(labels)), labels)
+
+                # Dynamic Title based on Phase
+                plt.title(f"Subject {ids[idx]} - {phase_name} Phase: Signal Correlation")
+
+                # Annotate values
+                for i in range(len(labels)):
+                    for j in range(len(labels)):
+                        val = corr_matrix.iloc[i, j]
+                        text_color = 'white' if abs(val) > 0.5 else 'black'
+                        plt.text(j, i, f"{val:.2f}",
+                                 ha='center', va='center', color=text_color, fontweight='bold')
+
+                plt.tight_layout()
+
+                save_name = f"{signal.name}_{phase_name}_Corr_Matrix.png"
+                save_path = os.path.join(PPG_BASE_DIR, signal.name, save_name)
+                plt.savefig(save_path)
+                plt.close()
 
         except Exception as e:
             print(f" Error processing PPG subject {ids[idx]}: {e}")
